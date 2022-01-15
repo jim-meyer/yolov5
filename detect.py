@@ -29,6 +29,7 @@ from utils.general import apply_classifier, check_img_size, check_imshow, check_
     strip_optimizer, xyxy2xywh
 from utils.plots import Annotator, colors
 from utils.torch_utils import load_classifier, select_device, time_sync
+from utils.label_exporters import TxtLabelExporter, VocLabelExporter
 
 
 @torch.no_grad()
@@ -41,16 +42,20 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         device='',  # cuda device, i.e. 0 or 0,1,2,3 or cpu
         view_img=False,  # show results
         save_txt=False,  # save results to *.txt
+        save_voc=False,  # save results to *.xml in Pascal VOC format
+        voc_ext='.xml',  # The extension to use for Pascal VOC label files
         save_conf=False,  # save confidences in --save-txt labels
         save_crop=False,  # save cropped prediction boxes
-        nosave=False,  # do not save images/videos
-        classes=None,  # filter by class: --class 0, or --class 0 2 3
+        save=False,  # do not save images/videos
+        classes=None,  # The class labels (as strings)
+        filter_classes=None,  # filter by class: --filter-class 0, or --filter-class 0 2 3
         agnostic_nms=False,  # class-agnostic NMS
         augment=False,  # augmented inference
         visualize=False,  # visualize features
         update=False,  # update all models
         project=ROOT / 'runs/detect',  # save results to project/name
         name='exp',  # save results to project/name
+        output_dir=None,    # Allows caller to specify a specific output dir instead of using `project` and `name`
         exist_ok=False,  # existing project/name ok, do not increment
         line_thickness=3,  # bounding box thickness (pixels)
         hide_labels=False,  # hide labels
@@ -59,13 +64,19 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         dnn=False,  # use OpenCV DNN for ONNX inference
         ):
     source = str(source)
-    save_img = not nosave and not source.endswith('.txt')  # save inference images
+    # Find the base path for any wildcard expressions that may be in `source`
+    source_base = source[:source.index('*')] if '*' in source else source
+    save_img = save and not source.endswith('.txt')  # save inference images
     webcam = source.isnumeric() or source.endswith('.txt') or source.lower().startswith(
         ('rtsp://', 'rtmp://', 'http://', 'https://'))
 
     # Directories
-    save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
-    (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+    if output_dir is not None:
+        save_dir = Path(output_dir)
+        os.makedirs(save_dir, exist_ok=True)
+    else:
+        save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
+    #(save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
     # Initialize
     set_logging()
@@ -180,7 +191,7 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         dt[1] += t3 - t2
 
         # NMS
-        pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
+        pred = non_max_suppression(pred, conf_thres, iou_thres, filter_classes, agnostic_nms, max_det=max_det)
         dt[2] += time_sync() - t3
 
         # Second-stage classifier (optional)
@@ -197,7 +208,7 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
 
             p = Path(p)  # to Path
             save_path = str(save_dir / p.name)  # img.jpg
-            txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
+            #txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # img.txt
             s += '%gx%g ' % img.shape[2:]  # print string
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
             imc = im0.copy() if save_crop else im0  # for save_crop
@@ -212,12 +223,21 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
                 # Write results
+                if save_txt:
+                    exporter = TxtLabelExporter(save_dir, classes)
+                elif save_voc:
+                    if classes is None:
+                        raise RuntimeError('Exporting predictions to Pascal VOC requires the classes be passed via --classes')
+                    exporter = VocLabelExporter(save_dir, classes, voc_ext)
+                else:
+                    exporter = None
+                rel_label_path = p.relative_to(source_base)
+                os.makedirs(os.path.join(save_dir, os.path.dirname(rel_label_path)), exist_ok=True)
+                exporter.begin_export(im0, rel_label_path)
                 for *xyxy, conf, cls in reversed(det):
-                    if save_txt:  # Write to file
+                    if exporter is not None:
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                        line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
-                        with open(txt_path + '.txt', 'a') as f:
-                            f.write(('%g ' * len(line)).rstrip() % line + '\n')
+                        exporter.export_bbox(int(cls), *xywh, conf=conf if save_conf else None)
 
                     if save_img or save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
@@ -225,6 +245,8 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
                         annotator.box_label(xyxy, label, color=colors(c, True))
                         if save_crop:
                             save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
+                if exporter is not None:
+                    exporter.end_export()
 
             # Print time (inference-only)
             print(f'{s}Done. ({t3 - t2:.3f}s)')
@@ -257,8 +279,8 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
     # Print results
     t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
     print(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *imgsz)}' % t)
-    if save_txt or save_img:
-        s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir / 'labels'}" if save_txt else ''
+    if save_txt or save_voc or save_img:
+        s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir}" if save_txt else ''
         print(f"Results saved to {colorstr('bold', save_dir)}{s}")
     if update:
         strip_optimizer(weights)  # update model (to fix SourceChangeWarning)
@@ -275,15 +297,19 @@ def parse_opt():
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--view-img', action='store_true', help='show results')
     parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
+    parser.add_argument('--save-voc', action='store_true', help='save results in Pascal VOC format to *.xml')
+    parser.add_argument('--voc-ext', type=str, default='.xml', help='The extension to use for Pascal VOC label files')
     parser.add_argument('--save-conf', action='store_true', help='save confidences in --save-txt labels')
     parser.add_argument('--save-crop', action='store_true', help='save cropped prediction boxes')
-    parser.add_argument('--nosave', action='store_true', help='do not save images/videos')
-    parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --classes 0, or --classes 0 2 3')
+    parser.add_argument('--save', action='store_true', help='save images/videos with predictions rendered')
+    parser.add_argument('--classes', nargs='+', type=str, help='the class names as strings')
+    parser.add_argument('--filter-classes', nargs='+', type=int, help='filter by class: --filter-classes 0, or --filter-classes 0 2 3')
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--visualize', action='store_true', help='visualize features')
     parser.add_argument('--update', action='store_true', help='update all models')
     parser.add_argument('--project', default=ROOT / 'runs/detect', help='save results to project/name')
+    parser.add_argument('--output-dir', type=str, default=None, help='Allows caller to specify a specific output dir instead of using `project` and `name`')
     parser.add_argument('--name', default='exp', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--line-thickness', default=3, type=int, help='bounding box thickness (pixels)')

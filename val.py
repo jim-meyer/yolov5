@@ -150,6 +150,7 @@ def run(data,
         pad = 0.0 if task == 'speed' else 0.5
         task = task if task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
         dataloader = create_dataloader(data[task], imgsz, batch_size, gs, single_cls, pad=pad, rect=True,
+                                       workers=0,
                                        prefix=colorstr(f'{task}: '))[0]
 
     seen = 0

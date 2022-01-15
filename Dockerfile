@@ -7,12 +7,13 @@ FROM nvcr.io/nvidia/pytorch:21.05-py3
 RUN apt update && apt install -y zip htop screen libgl1-mesa-glx
 
 # Install python dependencies
-COPY requirements.txt .
 RUN python -m pip install --upgrade pip
 RUN pip uninstall -y nvidia-tensorboard nvidia-tensorboard-plugin-dlprof
-RUN pip install --no-cache -r requirements.txt coremltools onnx gsutil notebook wandb>=0.12.2
+RUN pip install --no-cache coremltools onnx gsutil notebook wandb>=0.12.2
 RUN pip install --no-cache -U torch torchvision numpy
 # RUN pip install --no-cache torch==1.9.1+cu111 torchvision==0.10.1+cu111 -f https://download.pytorch.org/whl/torch_stable.html
+COPY requirements.txt .
+RUN pip install --no-cache -r requirements.txt
 
 # Create working directory
 RUN mkdir -p /usr/src/app
