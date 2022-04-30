@@ -66,7 +66,7 @@ def process_batch(detections, labels, iouv):
         correct (Array[N, 10]), for 10 IoU levels
     """
     correct = torch.zeros(detections.shape[0], iouv.shape[0], dtype=torch.bool, device=iouv.device)
-    iou = box_iou(labels[:, 1:], detections[:, :4])
+    iou = box_iou(labels[:, 1:], detections[:, :4])     # iou (Tensor[N, M]): the NxM matrix containing the pairwise IoU values for every element in boxes1 and boxes2
     x = torch.where((iou >= iouv[0]) & (labels[:, 0:1] == detections[:, 5]))  # IoU above threshold and classes match
     if x[0].shape[0]:
         matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1).cpu().numpy()  # [label, detection, iou]
@@ -106,6 +106,10 @@ def run(data,
         plots=True,
         callbacks=Callbacks(),
         compute_loss=None,
+        # JIMM: BEGIN
+        classes=None,
+        overlap_rules=None,
+        # JIMM: END
         ):
     # Initialize/load model and set device
     training = model is not None
@@ -152,6 +156,12 @@ def run(data,
         dataloader = create_dataloader(data[task], imgsz, batch_size, gs, single_cls, pad=pad, rect=True,
                                        workers=0,
                                        prefix=colorstr(f'{task}: '))[0]
+
+    # JIMM: BEGIN
+    if overlap_rules is not None:
+        from weed_detector.od.yolov5.yolo5_post_processor import Yolov5PostProcessor
+        post_processor = Yolov5PostProcessor(os.path.expanduser(overlap_rules), class_labels=classes)
+    # JIMM: END
 
     seen = 0
     confusion_matrix = ConfusionMatrix(nc=nc)
@@ -210,6 +220,12 @@ def run(data,
                 tbox = xywh2xyxy(labels[:, 1:5])  # target boxes
                 scale_coords(img[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels
                 labelsn = torch.cat((labels[:, 0:1], tbox), 1)  # native-space labels
+
+                # JIMM: BEGIN
+                if overlap_rules is not None:
+                    predn = post_processor.post_process(img[si], predn)
+                # JIMM: END
+
                 correct = process_batch(predn, labelsn, iouv)
                 if plots:
                     confusion_matrix.process_batch(predn, labelsn)
@@ -319,6 +335,9 @@ def parse_opt():
     parser.add_argument('--name', default='exp', help='save to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
+    # JIMM: BEGIN
+    parser.add_argument('--overlap-rules', required=False, help='Path json file that contains overlap resolution rules.')
+    # JIMM: END
     opt = parser.parse_args()
     opt.data = check_yaml(opt.data)  # check YAML
     opt.save_json |= opt.data.endswith('coco.yaml')

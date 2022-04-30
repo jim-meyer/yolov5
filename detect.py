@@ -62,6 +62,9 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         hide_conf=False,  # hide confidences
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
+        # JIMM: BEGIN
+        overlap_rules=None,
+        # JIMM: END
         ):
     source = str(source)
     # Find the base path for any wildcard expressions that may be in `source`
@@ -69,6 +72,12 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
     save_img = save and not source.endswith('.txt')  # save inference images
     webcam = source.isnumeric() or source.endswith('.txt') or source.lower().startswith(
         ('rtsp://', 'rtmp://', 'http://', 'https://'))
+
+    # JIMM: BEGIN
+    # There is no value in doing this as pytorch already sets `set_num_interop_threads()` and `set_num_threads()` reasonably
+    # import multiprocessing
+    # torch.set_num_threads(multiprocessing.cpu_count())
+    # JIMM: END
 
     # Directories
     if output_dir is not None:
@@ -139,10 +148,16 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         bs = 1  # batch_size
     vid_path, vid_writer = [None] * bs, [None] * bs
 
+    # JIMM: BEGIN
+    if overlap_rules is not None:
+        from weed_detector.od.yolov5.yolo5_post_processor import Yolov5PostProcessor
+        post_processor = Yolov5PostProcessor(os.path.expanduser(overlap_rules), class_labels=classes)
+    # JIMM: END
+
     # Run inference
     if pt and device.type != 'cpu':
         model(torch.zeros(1, 3, *imgsz).to(device).type_as(next(model.parameters())))  # run once
-    dt, seen = [0.0, 0.0, 0.0], 0
+    dt, seen = [0.0, 0.0, 0.0, 0.0], 0
     for path, img, im0s, vid_cap in dataset:
         t1 = time_sync()
         if onnx:
@@ -193,6 +208,13 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
         # NMS
         pred = non_max_suppression(pred, conf_thres, iou_thres, filter_classes, agnostic_nms, max_det=max_det)
         dt[2] += time_sync() - t3
+
+        # JIMM: BEGIN
+        t4 = time_sync()
+        if overlap_rules is not None:
+            pred = [post_processor.post_process(i, p) for i, p in zip(img, pred)]
+        dt[3] += time_sync() - t4
+        # JIMM: END
 
         # Second-stage classifier (optional)
         if classify:
@@ -276,9 +298,15 @@ def run(weights=ROOT / 'yolov5s.pt',  # model.pt path(s)
                         vid_writer[i] = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer[i].write(im0)
 
+    # JIMM: BEGIN
+    if overlap_rules is not None:
+        import json
+        print(json.dumps(post_processor.summary(), indent=4))
+    # JIMM: END
+
     # Print results
     t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
-    print(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *imgsz)}' % t)
+    print(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS, %.1fms post processing per image at shape {(1, 3, *imgsz)}' % t)
     if save_txt or save_voc or save_img:
         s = f"\n{len(list(save_dir.glob('labels/*.txt')))} labels saved to {save_dir}" if save_txt else ''
         print(f"Results saved to {colorstr('bold', save_dir)}{s}")
@@ -317,6 +345,9 @@ def parse_opt():
     parser.add_argument('--hide-conf', default=False, action='store_true', help='hide confidences')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
+    # JIMM: BEGIN
+    parser.add_argument('--overlap-rules', required=False, help='Path json file that contains overlap resolution rules.')
+    # JIMM: END
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(FILE.stem, opt)

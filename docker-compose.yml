@@ -6,3 +6,5 @@ services:
       dockerfile: Dockerfile
     volumes:
       - .:/usr/src/app
+      - ~/ml:/ml
+      - ~/models:/models

@@ -98,6 +98,49 @@ detect_2_18_2022_yolo5s_model:
 			--save-txt \
 			--output-dir /trailcam_picts
 
+detect_2_18_2022_yolo5s_model_with_post_processing:
+	docker run -it \
+		-v $(PWD):/usr/src/app \
+		-v ~/models:/models \
+		-v ${IMAGES_DIR}:/trailcam_picts \
+		yolov5_yolov5:latest \
+		python3 detect.py \
+			--weights /models/trailcam/yolov5/trailcam_10_class_2_18_2022_yolov5s/weights/best.pt \
+			--source '/trailcam_picts/*.[jJ][pP][gG]' \
+			 --overlap-rules /ml/weed_detector/build/analyzer_rules.json \
+			--save-txt \
+			--output-dir /trailcam_picts
+
+
+test_2_18_2022_yolo5s_jittered_plus_10_model:
+	docker run -it \
+		-v $(PWD):/usr/src/app \
+		-v ~/ml/images/trailcam_yolov5/640x640:/home/ubuntu/ml/images/trailcam_yolov5/640x640 \
+		-v ~/models:/models \
+		yolov5_yolov5:latest \
+		python3 val.py \
+			--task test \
+			--weights /models/trailcam/yolov5/trailcam_10_class_2_18_2022_jittered_plus_10_yolov5s/weights/best.pt \
+			--data /models/trailcam/yolov5/trailcam_10_class_2_18_2022_yolov5s/trailcam_10_class_2_18_2022.yaml \
+			--name trailcam_10_class_2_18_2022_jittered_plus_10_yolov5s \
+			--imgsz 640 \
+			--verbose
+
+
+test_2_18_2022_yolo5s_jittered_plus_10_model_against_jittered_labels:
+	docker run -it \
+		-v $(PWD):/usr/src/app \
+		-v ~/ml/images/trailcam_yolov5/640x640:/home/ubuntu/ml/images/trailcam_yolov5/640x640 \
+		-v ~/models:/models \
+		yolov5_yolov5:latest \
+		python3 val.py \
+			--task test \
+			--weights /models/trailcam/yolov5/trailcam_10_class_2_18_2022_jittered_plus_10_yolov5s/weights/best.pt \
+			--data /models/trailcam/yolov5/trailcam_10_class_2_18_2022_yolov5s/trailcam_10_class_2_18_2022.yaml \
+			--name trailcam_10_class_2_18_2022_jittered_plus_10_yolov5s_against_jittered_labels \
+			--imgsz 640 \
+			--verbose
+
 
 #
 # 2_18_2022_no_2022_datasets_yolo5s
