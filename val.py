@@ -223,7 +223,11 @@ def run(data,
 
                 # JIMM: BEGIN
                 if overlap_rules is not None:
-                    predn = post_processor.post_process(img[si], predn)
+                    pred_pp = pred[pred[:, 4] > confusion_matrix.conf]
+                    predn_pp = predn[predn[:, 4] > confusion_matrix.conf]
+                    pred, predn = post_processor.post_process(img[si], pred_pp, predn_pp, path)
+                    del pred_pp
+                    del predn_pp
                 # JIMM: END
 
                 correct = process_batch(predn, labelsn, iouv)

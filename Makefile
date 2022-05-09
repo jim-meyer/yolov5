@@ -159,3 +159,22 @@ test_2_18_2022_no_2022_datasets_yolo5s_model:
 			--name trailcam_10_class_2_18_2022_no_2022_datasets_yolov5s \
 			--imgsz 640 \
 			--verbose
+
+
+#
+# 2_18_2022_no_2022_datasets_yolo5s
+#
+val_4_30_2022_yolo5s:
+	#aws s3 cp --recursive s3://modeldata-jimm/trailcam/${model_name}_${yolo5_arch}/ ~/models/trailcam/yolov5/
+	docker run -it \
+		-v $(PWD):/usr/src/app \
+		-v ~/ml/images/trailcam_yolov5/640x640:/home/ubuntu/ml/images/trailcam_yolov5/640x640 \
+		-v ~/models:/models \
+		yolov5_yolov5:latest \
+		python3 val.py \
+			--task val \
+			--weights /models/trailcam/yolov5/trailcam_10_class_4_30_2022_yolov5s/weights/best.pt \
+			--data /models/trailcam/yolov5/trailcam_10_class_4_30_2022_yolov5s/trailcam_10_class_4_30_2022_yolov5s.yaml \
+			--name trailcam_10_class_4_30_2022_yolov5s \
+			--imgsz 640 \
+			--verbose
