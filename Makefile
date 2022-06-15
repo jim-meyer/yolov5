@@ -178,3 +178,39 @@ val_4_30_2022_yolo5s:
 			--name trailcam_10_class_4_30_2022_yolov5s \
 			--imgsz 640 \
 			--verbose
+
+#
+# trailcam_11_class_5_28_2022_yolov5s
+#
+test_5_28_2022_yolo5s:
+	#aws s3 cp --recursive s3://modeldata-jimm/trailcam/${model_name}_${yolo5_arch}/ ~/models/trailcam/yolov5/
+	docker run -it \
+		-v $(PWD):/usr/src/app \
+		-v ~/ml/images/trailcam_yolov5/640x640:/home/ubuntu/ml/images/trailcam_yolov5/640x640 \
+		-v ~/models:/models \
+		yolov5_yolov5:latest \
+		python3 val.py \
+			--task test \
+			--weights /models/trailcam/yolov5/trailcam_11_class_5_28_2022_yolov5s/weights/best.pt \
+			--data /models/trailcam/yolov5/trailcam_11_class_5_28_2022_yolov5s/trailcam_11_class_5_28_2022_yolov5s.yaml \
+			--name trailcam_11_class_5_28_2022_yolov5s \
+			--imgsz 640 \
+			--verbose
+
+#
+# trailcam_11_class_5_28_2022_batch64_yolov5l
+#
+detect_trailcam_11_class_5_28_2022_yolov5l:
+	find ${IMAGES_DIR} -name *.JPG -exec chmod ugo-w {} + && \
+	docker run -it \
+		-v $(PWD):/usr/src/app \
+		-v ~/tmp/yolov5:/yolov5/data \
+		-v ~/models:/models \
+		-v ~/tmp:/hosttmp \
+		-v ${IMAGES_DIR}:/trailcam_picts \
+		yolov5_yolov5:latest \
+		python3 detect.py \
+			--weights /models/trailcam/yolov5/trailcam_11_class_5_28_2022_batch64_yolov5l/weights/best.pt \
+			--source '/trailcam_picts/*.JPG' \
+			--save-txt \
+			--output-dir /trailcam_picts
